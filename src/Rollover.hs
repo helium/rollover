@@ -104,19 +104,20 @@ exceptionInfo (SomeException e) =
 
 stackFrameParser :: Parser StackFrame
 stackFrameParser = do
+    let int :: Parser Int
+        int = decimal
+
     moduleAndFunction <- takeWhile1 (/= ' ')
-    space
-    char '('
-    fileName <- takeWhile1 (/= ':')
-    string ":("
-    lineNo <- decimal
-    char ','
-    column <- decimal
-    string ")-("
-    _ <- decimal
-    char ','
-    _ <- decimal
-    string "))"
+
+    void $ space >> char '(' >> takeWhile1 (/= ':') >> string ":("
+
+    lineNo <- int
+
+    void (char ',')
+
+    column <- int
+
+    void $ string ")-(" >> int >> char ',' >> int >> string "))"
 
     let splitUp = splitOn "." moduleAndFunction
         function = last splitUp
