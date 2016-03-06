@@ -15,15 +15,15 @@ module Rollover
     , recordException
     ) where
 
-import Control.Concurrent.Async
-import Control.Monad
-import Control.Exception
-import Data.Aeson
-import Data.Attoparsec.Text
-import Data.Proxy
+import Control.Concurrent.Async (Async, async)
+import Control.Monad (void)
+import Control.Exception (SomeException(..), displayException)
+import Data.Aeson (ToJSON(..), (.=), object)
+import Data.Attoparsec.Text (Parser, takeWhile1, string, decimal, space, char, parseOnly)
+import Data.Proxy (asProxyTypeOf)
 import Data.Text (Text, pack, intercalate, splitOn)
-import Data.Typeable
-import Network.Wreq
+import Data.Typeable (typeRep)
+import Network.Wreq (post)
 
 newtype ApiKey = ApiKey
     { _unApiKey :: Text }

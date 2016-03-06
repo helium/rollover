@@ -2,12 +2,12 @@ module Main where
 
 import Rollover
 
-import Control.Exception
-import Control.Concurrent.Async
-import Data.Text
-import GHC.Stack
-import System.Environment
-import System.IO
+import Control.Exception (try)
+import Control.Concurrent.Async (wait)
+import Data.Text (pack)
+import GHC.Stack (currentCallStack)
+import System.Environment (getArgs)
+import System.IO (IOMode(..), openFile)
 
 main :: IO ()
 main = do
