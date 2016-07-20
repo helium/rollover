@@ -6,9 +6,8 @@ module Rollover
     , Environment(..)
     , CodeVersion(..)
     , RollbarInfo(..)
-    , defaultRolbarInfo
     , recordException
-    , rollbarInfoWithHostname
+    , rollbarInfo
     ) where
 
 
@@ -33,23 +32,17 @@ data RollbarInfo = RollbarInfo
     , _riCode :: Maybe CodeVersion
     } deriving (Show, Eq)
 
--- | Create a 'RollbarInfo' with '_riApiKey' defined, and '_riHost' populated
--- with the C function @gethostname(3)@.
-rollbarInfoWithHostname :: ApiKey -> IO RollbarInfo
-rollbarInfoWithHostname apiKey = do
+-- | Create a 'RollbarInfo' with all fields defined. This function uses
+-- the C function @gethostname(3)@ to retrieve the hostname of the machine.
+rollbarInfo :: ApiKey -> Environment -> CodeVersion -> IO RollbarInfo
+rollbarInfo apiKey env codeVersion = do
     hostName <- getHostName
-    let defaults = defaultRolbarInfo apiKey
-        host = Host (pack hostName)
-    return (defaults { _riHost = Just host })
-
--- | Create a 'RollbarInfo' with '_riApiKey' defined, and @Nothing@ for all
--- other values.
-defaultRolbarInfo :: ApiKey -> RollbarInfo
-defaultRolbarInfo apiKey =
-    RollbarInfo { _riApiKey = apiKey
-                , _riHost = Nothing
-                , _riEnvironment = Nothing
-                , _riCode = Nothing
+    let host = Host (pack hostName)
+    return RollbarInfo
+                { _riApiKey = apiKey
+                , _riEnvironment = Just env
+                , _riCode = Just codeVersion
+                , _riHost = Just host
                 }
 
 -- | Report an exception to Rollbar. The @exception@ argument is the result
@@ -61,11 +54,7 @@ defaultRolbarInfo apiKey =
 -- >    let apiKey = ApiKey "my-rollbar-api-key"
 -- >        environment = Environment "staging"
 -- >        codeVersion = CodeVersion "deadbeef"
--- >    rollbarWithHost <- rollbarInfoWithHostname apiKey
--- >    let rbInfo = rollbarWithHost
--- >                        { _riEnvironment = Just environment
--- >                        , _riCode = Just codeVersion
--- >                        }
+-- >    rbInfo <- rollbarInfo apiKey environment codeVersion
 -- >    Left e <- try (openFile "/does/not/exist" ReadMode)
 -- >    stack <- currentCallStack
 -- >    a <- recordException rbInfo e stack
@@ -77,6 +66,6 @@ recordException
     -> IO (Async ())
 recordException RollbarInfo{..} exception stackTrace =
     async (void (post "https://api.rollbar.com/api/1/item/" (toJSON rbItem)))
-    where rbItem = RollbarItem _riApiKey _riEnvironment _riCode exc
+    where rbItem = RollbarItem _riApiKey _riEnvironment _riCode _riHost exc
           exc = RollbarException (exceptionInfo exception) trace
           trace = lenientStackFrameParse . pack <$> stackTrace

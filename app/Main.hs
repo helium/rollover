@@ -15,11 +15,7 @@ main = do
     let apiKey = ApiKey apiKeyText
         environment = Environment environmentText
         codeVersion = CodeVersion codeVersionText
-    rollbarWithHost <- rollbarInfoWithHostname apiKey
-    let rbInfo = rollbarWithHost
-                        { _riEnvironment = Just environment
-                        , _riCode = Just codeVersion
-                        }
+    rbInfo <- rollbarInfo apiKey environment codeVersion
     Left e <- try (openFile "/does/not/exist" ReadMode)
     stack <- currentCallStack
     a <- recordException rbInfo e stack

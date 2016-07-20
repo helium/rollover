@@ -64,6 +64,7 @@ data RollbarItem = RollbarItem
     { _apiKey :: ApiKey
     , _environment :: Maybe Environment
     , _codeVersion :: Maybe CodeVersion
+    , _host :: Maybe Host
     , _exception :: RollbarException
     }
 
@@ -77,6 +78,8 @@ instance ToJSON RollbarItem where
                                 object [ "trace" .= _exception
                                        , "notifier" .= notifier
                                        ]
+                          , "server" .=
+                                object [ "host" .= _host ]
                           ]
                ]
 
