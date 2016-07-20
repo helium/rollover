@@ -15,9 +15,12 @@ main = do
     let apiKey = ApiKey apiKeyText
         environment = Environment environmentText
         codeVersion = CodeVersion codeVersionText
-        go = do
-            Left e <- try (openFile "/does/not/exist" ReadMode)
-            stack <- currentCallStack
-            a <- recordException apiKey environment codeVersion e stack
-            wait a
-    go
+    rollbarWithHost <- rollbarInfoWithHostname apiKey
+    let rbInfo = rollbarWithHost
+                        { _riEnvironment = Just environment
+                        , _riCode = Just codeVersion
+                        }
+    Left e <- try (openFile "/does/not/exist" ReadMode)
+    stack <- currentCallStack
+    a <- recordException rbInfo e stack
+    wait a

@@ -6,7 +6,7 @@ import Data.Attoparsec.Text (parseOnly)
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import Rollover (StackFrame(..), stackFrameParser)
+import Rollover.Internal (StackFrame(..), stackFrameParser)
 
 stackFrameTest :: IO ()
 stackFrameTest = do

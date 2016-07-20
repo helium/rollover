@@ -1,4 +1,3 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
@@ -6,168 +5,78 @@ module Rollover
     ( ApiKey(..)
     , Environment(..)
     , CodeVersion(..)
-    , ExceptionInfo(..)
-    , StackFrame(..)
-    , RollbarException(..)
-    , RollbarItem(..)
-    , exceptionInfo
-    , stackFrameParser
+    , RollbarInfo(..)
+    , defaultRolbarInfo
     , recordException
+    , rollbarInfoWithHostname
     ) where
 
-import Control.Applicative ((<|>))
+
 import Control.Concurrent.Async (Async, async)
+import Control.Exception (SomeException(..))
 import Control.Monad (void)
-import Control.Exception (SomeException(..), displayException)
-import Data.Aeson (ToJSON(..), (.=), object)
-import Data.Attoparsec.Text (Parser, takeWhile1, string, decimal, space, char, parseOnly)
-import Data.Proxy (asProxyTypeOf)
-import Data.Text (Text, pack, intercalate, splitOn)
-import Data.Typeable (typeRep)
+import Data.Aeson (ToJSON(..))
+import Data.Text (pack)
+import Network.HostName (getHostName)
 import Network.Wreq (post)
 
-newtype ApiKey = ApiKey
-    { _unApiKey :: Text }
-    deriving (Show, Eq, ToJSON)
+import Rollover.Internal
 
-newtype Environment = Environment
-    { _unEnvironment :: Text }
-    deriving (Show, Eq, ToJSON)
-
-newtype CodeVersion = CodeVersion
-    { _unCodeVersion :: Text }
-    deriving (Show, Eq, ToJSON)
-
-newtype Host = Host
-    { _unHost :: Text }
-    deriving (Show, Eq, ToJSON)
-
-data ExceptionInfo = ExceptionInfo
-    { _exceptionType :: Text
-    , _exceptionDesc :: Text
+-- | The non-exception arguments to 'recordException'. This value will probably
+-- be created once, when your app starts, and will be shared on all calls to
+-- 'recordException'. The functions 'rollbarInfoWithHostname' and
+-- 'defaultRolbarInfo' are helpers for creating this record.
+data RollbarInfo = RollbarInfo
+    { _riApiKey :: ApiKey
+    , _riHost :: Maybe Host
+    , _riEnvironment :: Maybe Environment
+    , _riCode :: Maybe CodeVersion
     } deriving (Show, Eq)
 
-instance ToJSON ExceptionInfo where
-    toJSON ExceptionInfo{..} =
-        object [ "class" .= _exceptionType
-               , "message" .= _exceptionDesc
-               ]
+-- | Create a 'RollbarInfo' with '_riApiKey' defined, and '_riHost' populated
+-- with the C function @gethostname(3)@.
+rollbarInfoWithHostname :: ApiKey -> IO RollbarInfo
+rollbarInfoWithHostname apiKey = do
+    hostName <- getHostName
+    let defaults = defaultRolbarInfo apiKey
+        host = Host (pack hostName)
+    return (defaults { _riHost = Just host })
 
-data StackFrame = StackFrame
-    { _module   :: Text
-    , _function :: Text
-    , _lineNo   :: Int
-    , _colNo    :: Int
-    } deriving (Show, Eq)
+-- | Create a 'RollbarInfo' with '_riApiKey' defined, and @Nothing@ for all
+-- other values.
+defaultRolbarInfo :: ApiKey -> RollbarInfo
+defaultRolbarInfo apiKey =
+    RollbarInfo { _riApiKey = apiKey
+                , _riHost = Nothing
+                , _riEnvironment = Nothing
+                , _riCode = Nothing
+                }
 
-instance ToJSON StackFrame where
-    toJSON StackFrame{..} =
-        object [ "filename" .= _module
-               , "method" .= _function
-               , "lineno" .= _lineNo
-               , "colno" .= _colNo
-               ]
-
-data RollbarException = RollbarException
-    { _exceptionInfo :: ExceptionInfo
-    , _trace :: [StackFrame]
-    } deriving (Show, Eq)
-
-instance ToJSON RollbarException where
-    toJSON RollbarException{..} =
-        object [ "frames" .= _trace
-               , "exception" .= _exceptionInfo
-               ]
-
-data RollbarItem = RollbarItem
-    { _apiKey :: ApiKey
-    , _environment :: Environment
-    , _codeVersion :: CodeVersion
-    , _exception :: RollbarException
-    }
-
-instance ToJSON RollbarItem where
-    toJSON RollbarItem{..} =
-        object [ "access_token" .= _apiKey
-               , "data" .=
-                   object [ "environment" .= _environment
-                          , "code_version" .= _codeVersion
-                          , "body" .=
-                                object [ "trace" .= _exception ]
-                          ]
-               ]
-
-exceptionInfo :: SomeException -> ExceptionInfo
-exceptionInfo (SomeException e) =
-    ExceptionInfo eType eDesc
-    where eType = (pack . show . typeRep . asProxyTypeOf) e
-          eDesc = pack (displayException e)
-
-int :: Parser Int
-int = decimal
-
-moduleAndFunctionParser :: Parser Text
-moduleAndFunctionParser = takeWhile1 (/= ' ')
-
-fileNameParser :: Parser Text
-fileNameParser =
-    space >> char '(' >> takeWhile1 (/= ':') >> string ":"
-
-multiLineLocationParser :: Parser (Int, Int)
-multiLineLocationParser = do
-    _ <- string "("
-    lineNo <- int
-    void (char ',')
-    column <- int
-    void $ string ")-(" >> int >> char ',' >> int >> string ")"
-    return (lineNo, column)
-
-singleLineLocationParser :: Parser (Int, Int)
-singleLineLocationParser = do
-    lineNo <- int
-    _ <- string ":"
-    column <- int
-    _ <- string "-"
-    void int
-    return (lineNo, column)
-
-stackFrameParser :: Parser StackFrame
-stackFrameParser = do
-
-    moduleAndFunction <- moduleAndFunctionParser
-
-    void fileNameParser
-
-    (lineNo, column) <- multiLineLocationParser <|> singleLineLocationParser
-
-    _ <- string ")"
-
-    let splitUp = splitOn "." moduleAndFunction
-        function = last splitUp
-        modName = intercalate "." (init splitUp)
-    return StackFrame
-        { _module = modName
-        , _function = function
-        , _lineNo = lineNo
-        , _colNo = column
-        }
-
-lenientStackFrameParse :: Text -> StackFrame
-lenientStackFrameParse frame =
-    case parseOnly stackFrameParser frame of
-        (Right f) -> f
-        (Left _) ->
-            StackFrame frame frame 0 0
-
+-- | Report an exception to Rollbar. The @exception@ argument is the result
+-- of calling @GHC.Stack.currentCallStack@.
+--
+-- Example:
+--
+-- >  do
+-- >    let apiKey = ApiKey "my-rollbar-api-key"
+-- >        environment = Environment "staging"
+-- >        codeVersion = CodeVersion "deadbeef"
+-- >    rollbarWithHost <- rollbarInfoWithHostname apiKey
+-- >    let rbInfo = rollbarWithHost
+-- >                        { _riEnvironment = Just environment
+-- >                        , _riCode = Just codeVersion
+-- >                        }
+-- >    Left e <- try (openFile "/does/not/exist" ReadMode)
+-- >    stack <- currentCallStack
+-- >    a <- recordException rbInfo e stack
+-- >    wait a
 recordException
-    :: ApiKey
-    -> Environment
-    -> CodeVersion
+    :: RollbarInfo
     -> SomeException
     -> [String]
     -> IO (Async ())
-recordException apiKey environment codeVersion exception stackTrace =
+recordException RollbarInfo{..} exception stackTrace =
     async (void (post "https://api.rollbar.com/api/1/item/" (toJSON rbItem)))
-    where rbItem = RollbarItem apiKey environment codeVersion exc
+    where rbItem = RollbarItem _riApiKey _riEnvironment _riCode exc
           exc = RollbarException (exceptionInfo exception) trace
           trace = lenientStackFrameParse . pack <$> stackTrace

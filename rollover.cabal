@@ -15,11 +15,13 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Rollover
+  exposed-modules:     Rollover, Rollover.Internal
+  other-modules:       Paths_rollover
   build-depends:       base >= 4.7 && < 5
                      , aeson
                      , async
                      , attoparsec
+                     , hostname
                      , text
                      , wreq
   default-language:    Haskell2010
