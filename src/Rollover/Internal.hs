@@ -4,13 +4,14 @@
 
 module Rollover.Internal
     ( ApiKey(..)
-    , Environment(..)
     , CodeVersion(..)
+    , Environment(..)
     , ExceptionInfo(..)
     , Host(..)
-    , StackFrame(..)
+    , Request(..)
     , RollbarException(..)
     , RollbarItem(..)
+    , StackFrame(..)
     , exceptionInfo
     , stackFrameParser
     , lenientStackFrameParse
@@ -25,6 +26,8 @@ import Data.Proxy (asProxyTypeOf)
 import Data.Text (Text, pack, intercalate, splitOn)
 import Data.Typeable (typeRep)
 import Data.Version (showVersion)
+import Data.Word (Word32)
+import Network.HTTP.Types (RequestHeaders)
 
 import Paths_rollover (version)
 
@@ -49,6 +52,16 @@ newtype Host = Host
     { _unHost :: Text }
     deriving (Show, Eq, ToJSON)
 
+-- | Information about the request (if there was one) that was being fullfilled
+-- while the exception occurred.
+data Request = Request
+    { _method :: Text
+    , _url :: Text
+    , _queryString :: Text
+    , _reqIp :: Word32 -- ^ Typically constructed with @Network.Socket.inet_addr@
+    , _headers :: RequestHeaders
+    }
+
 data RollbarException = RollbarException
     { _exceptionInfo :: ExceptionInfo
     , _trace :: [StackFrame]
@@ -65,6 +78,7 @@ data RollbarItem = RollbarItem
     , _environment :: Maybe Environment
     , _codeVersion :: Maybe CodeVersion
     , _host :: Maybe Host
+    , _req :: Maybe Request
     , _exception :: RollbarException
     }
 

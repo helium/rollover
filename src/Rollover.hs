@@ -1,11 +1,23 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-|
+
+Client for the <https://rollbar.com Rollbar> exception tracking service.
+There is an example in @app/Main.hs@. There's really only one function that
+needs to be used, 'recordException'. In order to get a stack trace, you should
+compile your code with profiling: @stack build --trace@.
+
+-}
 
 module Rollover
-    ( ApiKey(..)
+    (
+      -- * Types
+      ApiKey(..)
     , Environment(..)
     , CodeVersion(..)
+    , Request(..)
     , RollbarInfo(..)
+    -- * Functions
     , recordException
     , rollbarInfo
     ) where
@@ -54,18 +66,26 @@ rollbarInfo apiKey env codeVersion = do
 -- >    let apiKey = ApiKey "my-rollbar-api-key"
 -- >        environment = Environment "staging"
 -- >        codeVersion = CodeVersion "deadbeef"
+-- >        request = Request
+-- >                      { _method = "GET"
+-- >                      , _url = "/users/foo"
+-- >                      , _queryString = "sort=desc&foo=bar"
+-- >                      , _reqIp = ipAddr
+-- >                      , _headers = [("Foo", "bar"), ("Baz", "quz")]
+-- >                      }
 -- >    rbInfo <- rollbarInfo apiKey environment codeVersion
 -- >    Left e <- try (openFile "/does/not/exist" ReadMode)
 -- >    stack <- currentCallStack
--- >    a <- recordException rbInfo e stack
+-- >    a <- recordException rbInfo e (Just request) stack
 -- >    wait a
 recordException
     :: RollbarInfo
     -> SomeException
+    -> Maybe Request
     -> [String]
     -> IO (Async ())
-recordException RollbarInfo{..} exception stackTrace =
+recordException RollbarInfo{..} exception mRequest stackTrace =
     async (void (post "https://api.rollbar.com/api/1/item/" (toJSON rbItem)))
-    where rbItem = RollbarItem _riApiKey _riEnvironment _riCode _riHost exc
+    where rbItem = RollbarItem _riApiKey _riEnvironment _riCode _riHost mRequest exc
           exc = RollbarException (exceptionInfo exception) trace
           trace = lenientStackFrameParse . pack <$> stackTrace
