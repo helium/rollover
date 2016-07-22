@@ -63,6 +63,7 @@ rollbarInfo apiKey env codeVersion = do
 -- Example:
 --
 -- >  do
+-- >    ipAddr <- inet_addr "10.0.1.5"
 -- >    let apiKey = ApiKey "my-rollbar-api-key"
 -- >        environment = Environment "staging"
 -- >        codeVersion = CodeVersion "deadbeef"
