@@ -29,5 +29,5 @@ main = do
     rbInfo <- rollbarInfo apiKey environment codeVersion
     Left e <- try (openFile "/does/not/exist" ReadMode)
     stack <- currentCallStack
-    a <- recordException rbInfo e (Just request) stack
+    a <- recordException rbInfo (Just request) e stack
     wait a

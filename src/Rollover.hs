@@ -77,15 +77,15 @@ rollbarInfo apiKey env codeVersion = do
 -- >    rbInfo <- rollbarInfo apiKey environment codeVersion
 -- >    Left e <- try (openFile "/does/not/exist" ReadMode)
 -- >    stack <- currentCallStack
--- >    a <- recordException rbInfo e (Just request) stack
+-- >    a <- recordException rbInfo (Just request) e stack
 -- >    wait a
 recordException
     :: RollbarInfo
-    -> SomeException
     -> Maybe Request
+    -> SomeException
     -> [String]
     -> IO (Async ())
-recordException RollbarInfo{..} exception mRequest stackTrace =
+recordException RollbarInfo{..} mRequest exception stackTrace =
     async (void (post "https://api.rollbar.com/api/1/item/" (toJSON rbItem)))
     where rbItem = RollbarItem _riApiKey _riEnvironment _riCode _riHost mRequest exc
           exc = RollbarException (exceptionInfo exception) trace
