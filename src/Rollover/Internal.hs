@@ -22,8 +22,14 @@ import Control.Exception (SomeException(..), displayException)
 import Control.Monad (void)
 import Data.Aeson (ToJSON(..), Value, (.=), object)
 import Data.Attoparsec.Text (Parser, takeWhile1, string, decimal, space, char, parseOnly)
+import Data.Bits ((.&.), shiftR)
+import Data.ByteString (ByteString)
+import Data.CaseInsensitive (original)
+import Data.Monoid ((<>))
 import Data.Proxy (asProxyTypeOf)
 import Data.Text (Text, pack, intercalate, splitOn)
+import Data.Text.Encoding (decodeUtf8With)
+import Data.Text.Encoding.Error (lenientDecode)
 import Data.Typeable (typeRep)
 import Data.Version (showVersion)
 import Data.Word (Word32)
@@ -60,7 +66,35 @@ data Request = Request
     , _queryString :: Text
     , _reqIp :: Word32 -- ^ Typically constructed with @Network.Socket.inet_addr@
     , _headers :: RequestHeaders
-    }
+    } deriving (Show, Eq)
+
+instance ToJSON Request where
+    toJSON Request{..} =
+        object [ "method" .= _method
+               , "url" .= _url
+               , "query_string" .= _queryString
+               , "user_ip" .= formatIp _reqIp
+               , "headers" .= formatHeaders _headers
+               ]
+        where formatHeaders :: RequestHeaders -> Value
+              formatHeaders = object . fmap headerToValue
+              headerToValue (h, v) =
+                let textHeaderName = lenientUtf8Decode (original h)
+                    textHeaderValue = toJSON (lenientUtf8Decode v)
+                in (textHeaderName, textHeaderValue)
+
+formatIp :: Word32 -> Text
+formatIp word =
+    let d = (word .&. 0xff000000) `shiftR` 24
+        c = (word .&. 0x00ff0000) `shiftR` 16
+        b = (word .&. 0x0000ff00) `shiftR` 8
+        a = (word .&. 0x000000ff)
+        text = pack . show
+        dot x y = x <> "." <> y
+    in text a `dot` text b `dot` text c `dot` text d
+
+lenientUtf8Decode :: ByteString -> Text
+lenientUtf8Decode = decodeUtf8With lenientDecode
 
 data RollbarException = RollbarException
     { _exceptionInfo :: ExceptionInfo
@@ -94,6 +128,7 @@ instance ToJSON RollbarItem where
                                        ]
                           , "server" .=
                                 object [ "host" .= _host ]
+                          , "request" .= _req
                           ]
                ]
 

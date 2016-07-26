@@ -21,6 +21,8 @@ library
                      , aeson
                      , async
                      , attoparsec
+                     , bytestring
+                     , case-insensitive
                      , hostname
                      , http-types
                      , text
